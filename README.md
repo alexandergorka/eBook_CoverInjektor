@@ -2,6 +2,9 @@
 
 A streamlined desktop tool that adds cover art to PDF ebooks and exports them to ebook reader devices or local directories.
 
+![Preview](img/image.png)
+
+
 ## Features
 
 - **Batch PDF processing** — select one or many PDFs at once  

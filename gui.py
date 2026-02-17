@@ -28,7 +28,7 @@ from cover_fetcher import (
     fetch_covers,
 )
 from device_detector import DetectedDevice, detect_ereaders
-from pdf_processor import inject_cover, export_pdf
+from pdf_processor import inject_cover, export_pdf, render_first_page
 
 logger = logging.getLogger(__name__)
 
@@ -178,9 +178,38 @@ class CoverInjektorApp:
         # Cover preview (right side, same height as grid)
         self.preview_frame = ttk.LabelFrame(content_area, text="  Preview  ",
                                             padding=6, width=300)
-        self.preview_frame.pack(side="right", fill="both", padx=(10, 0))
+        self.preview_frame.pack(side="right", fill="y", padx=(10, 0))
         self.preview_frame.pack_propagate(False)
-        self.preview_label = ttk.Label(self.preview_frame,
+
+        # Sub-container: PDF first page (top) + cover preview (bottom)
+        # PDF first-page preview
+        pdf_preview_section = ttk.LabelFrame(self.preview_frame,
+                                             text="  Current First Page  ",
+                                             padding=4)
+        pdf_preview_section.pack(fill="both", expand=True, pady=(0, 4))
+        self.pdf_page_label = ttk.Label(pdf_preview_section,
+                                        text="No PDF\nloaded",
+                                        anchor="center", justify="center")
+        self.pdf_page_label.pack(expand=True)
+
+        # Checkbox: remove first page
+        self.remove_first_page_var = tk.BooleanVar(value=False)
+        self.remove_first_cb = ttk.Checkbutton(
+            self.preview_frame,
+            text="Remove existing first page",
+            variable=self.remove_first_page_var,
+        )
+        self.remove_first_cb.pack(pady=(2, 6))
+
+        # Separator
+        ttk.Separator(self.preview_frame, orient="horizontal").pack(fill="x", pady=2)
+
+        # New cover preview
+        cover_preview_section = ttk.LabelFrame(self.preview_frame,
+                                                text="  New Cover  ",
+                                                padding=4)
+        cover_preview_section.pack(fill="both", expand=True, pady=(4, 0))
+        self.preview_label = ttk.Label(cover_preview_section,
                                        text="No cover\nselected",
                                        anchor="center", justify="center")
         self.preview_label.pack(expand=True)
@@ -250,10 +279,16 @@ class CoverInjektorApp:
                 from cover_fetcher import _sanitise_query
                 query = _sanitise_query(self.pdf_paths[0])
                 self.search_var.set(query)
+            # Render first page preview of the first PDF
+            self._update_pdf_preview()
 
     def _on_clear_pdfs(self) -> None:
         self.pdf_paths.clear()
         self.pdf_listvar.set([])
+        self.pdf_page_label.configure(image="", text="No PDF\nloaded")
+        if hasattr(self.pdf_page_label, "_page_ref"):
+            del self.pdf_page_label._page_ref
+        self.remove_first_page_var.set(False)
         self._set_status("PDF selection cleared.")
 
     # ------------------------------------------------------------------
@@ -404,19 +439,33 @@ class CoverInjektorApp:
 
     def _show_preview(self, img: Image.Image) -> None:
         """Display a preview of the selected cover image."""
-
-        # Sicherstellen, dass die Größe aktuell berechnet ist
-        self.preview_frame.update_idletasks()
-
-        width = self.preview_frame.winfo_width()
-        height = self.preview_frame.winfo_height()
-
-        # Optional: Padding des LabelFrames berücksichtigen
-        preview = img.resize((width, height), Image.LANCZOS)
-
+        preview = img.copy()
+        preview.thumbnail((170, 180), Image.LANCZOS)
         tk_img = ImageTk.PhotoImage(preview)
         self.preview_label.configure(image=tk_img, text="")
         self.preview_label._preview_ref = tk_img  # prevent GC
+
+    # ------------------------------------------------------------------
+    # PDF first-page preview
+    # ------------------------------------------------------------------
+
+    def _update_pdf_preview(self) -> None:
+        """Render and display the first page of the first selected PDF."""
+        if not self.pdf_paths:
+            return
+
+        def _worker():
+            img = render_first_page(self.pdf_paths[0], max_size=(170, 180))
+            if img:
+                self.root.after(0, lambda: self._show_pdf_page(img))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _show_pdf_page(self, img: Image.Image) -> None:
+        """Display the rendered PDF first-page image."""
+        tk_img = ImageTk.PhotoImage(img)
+        self.pdf_page_label.configure(image=tk_img, text="")
+        self.pdf_page_label._page_ref = tk_img  # prevent GC
 
     # ------------------------------------------------------------------
     # Loading animation
@@ -525,6 +574,7 @@ class CoverInjektorApp:
         total = len(self.pdf_paths)
         self.progress["maximum"] = total
         self.progress["value"] = 0
+        remove_first = self.remove_first_page_var.get()
 
         def _worker():
             exported: list[str] = []
@@ -543,7 +593,8 @@ class CoverInjektorApp:
                     out_path = os.path.join(tmp_dir, out_name)
 
                     inject_cover(pdf_path, self.selected_cover_image,
-                                 out_path, page_size, dpi)
+                                 out_path, page_size, dpi,
+                                 remove_first_page=remove_first)
 
                     final = export_pdf(out_path, dest, base)
                     exported.append(final)

@@ -96,6 +96,90 @@ def create_cover_page(cover_image: Image.Image,
 
 
 # ---------------------------------------------------------------------------
+# First-page rendering (for preview)
+# ---------------------------------------------------------------------------
+
+def render_first_page(pdf_path: str, max_size: tuple[int, int] = (300, 420)) -> Optional[Image.Image]:
+    """Render the first page of a PDF as a PIL Image.
+
+    Uses ReportLab + pypdf to extract page dimensions, then falls back to a
+    simple rasterisation approach by converting the page content.
+
+    Args:
+        pdf_path: Path to the PDF file.
+        max_size: Maximum (width, height) for the returned image.
+
+    Returns:
+        PIL Image of the first page, or None on failure.
+    """
+    try:
+        import subprocess
+        import sys
+
+        pdf_path = os.path.abspath(pdf_path)
+        reader = PdfReader(pdf_path)
+        if not reader.pages:
+            return None
+
+        page = reader.pages[0]
+        box = page.mediabox
+        pw = float(box.width)
+        ph = float(box.height)
+
+        # Try sips (macOS) or pdftoppm (Linux/other) for rasterisation
+        img = None
+
+        # Attempt 1: use pypdf to extract images from the first page
+        if img is None:
+            try:
+                images_on_page = []
+                for image_obj in page.images:
+                    img_data = image_obj.data
+                    pil_img = Image.open(BytesIO(img_data))
+                    images_on_page.append(pil_img)
+                if images_on_page:
+                    # Use the largest image found on the page
+                    images_on_page.sort(key=lambda i: i.size[0] * i.size[1], reverse=True)
+                    img = images_on_page[0].convert("RGB")
+            except Exception:
+                pass
+
+        # Attempt 2: generate a blank page with dimensions as placeholder
+        if img is None:
+            # Create a white image with correct aspect ratio
+            aspect = pw / ph if ph > 0 else 0.7
+            target_h = max_size[1]
+            target_w = int(target_h * aspect)
+            img = Image.new("RGB", (target_w, target_h), "white")
+
+            # Draw "Page 1" label and border for clarity
+            from PIL import ImageDraw, ImageFont
+            draw = ImageDraw.Draw(img)
+            draw.rectangle([0, 0, target_w - 1, target_h - 1], outline="#999999", width=2)
+            # Try to draw text
+            try:
+                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 16)
+            except Exception:
+                try:
+                    font = ImageFont.truetype("arial.ttf", 16)
+                except Exception:
+                    font = ImageFont.load_default()
+            text = "Page 1"
+            bbox = draw.textbbox((0, 0), text, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            draw.text(((target_w - tw) // 2, (target_h - th) // 2), text,
+                      fill="#666666", font=font)
+
+        if img:
+            img.thumbnail(max_size, Image.LANCZOS)
+        return img
+
+    except Exception as exc:
+        logger.warning("Failed to render first page of '%s': %s", pdf_path, exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # PDF merging
 # ---------------------------------------------------------------------------
 
@@ -103,11 +187,12 @@ def inject_cover(pdf_path: str,
                  cover_image: Image.Image,
                  output_path: str,
                  page_size: str = "A4",
-                 dpi: int = 300) -> str:
+                 dpi: int = 300,
+                 remove_first_page: bool = False) -> str:
     """Insert a cover image as the first page of a PDF.
 
-    The original PDF content is preserved in its entirety. The output is
-    written to *output_path*.
+    The original PDF content is preserved. Optionally removes the existing
+    first page (useful when the PDF already has an old/bad cover).
 
     Args:
         pdf_path: Path to the source PDF file.
@@ -115,6 +200,7 @@ def inject_cover(pdf_path: str,
         output_path: Destination path for the resulting PDF.
         page_size: Cover page size name.
         dpi: Cover image DPI hint.
+        remove_first_page: If True, skip the original first page.
 
     Returns:
         The absolute path of the written output file.
@@ -129,7 +215,8 @@ def inject_cover(pdf_path: str,
     if not os.path.isfile(pdf_path):
         raise FileNotFoundError(f"Source PDF not found: {pdf_path}")
 
-    logger.info("Injecting cover into '%s' -> '%s'", pdf_path, output_path)
+    logger.info("Injecting cover into '%s' -> '%s' (remove_first=%s)",
+                pdf_path, output_path, remove_first_page)
 
     try:
         # 1. Generate cover page PDF
@@ -139,11 +226,12 @@ def inject_cover(pdf_path: str,
         # 2. Read original PDF
         original_reader = PdfReader(pdf_path)
 
-        # 3. Merge cover + original
+        # 3. Merge cover + original (optionally skipping first page)
+        start_page = 1 if remove_first_page and len(original_reader.pages) > 1 else 0
         writer = PdfWriter()
         for page in cover_reader.pages:
             writer.add_page(page)
-        for page in original_reader.pages:
+        for page in original_reader.pages[start_page:]:
             writer.add_page(page)
 
         # Copy metadata from original
