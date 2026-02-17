@@ -1,0 +1,12 @@
+{
+    "api_keys_file": "api_keys.json",
+    "default_export_directory": "",
+    "cover_search_results": 8,
+    "cover_page_size": "A4",
+    "cover_dpi": 300,
+    "log_level": "INFO",
+    "log_file": "ebook_coverinjektor.log",
+    "supported_extensions": [".pdf"],
+    "thumbnail_size": [150, 200],
+    "max_concurrent_downloads": 4
+}
