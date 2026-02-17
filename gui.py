@@ -66,8 +66,8 @@ class CoverInjektorApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("eBook CoverInjektor")
-        self.root.geometry("960x740")
-        self.root.minsize(800, 620)
+        self.root.geometry("1060x860")
+        self.root.minsize(900, 720)
 
         self.config = _load_config()
         self.pdf_paths: list[str] = []
@@ -142,11 +142,15 @@ class CoverInjektorApp:
         ttk.Button(search_bar, text="Search Covers",
                    command=self._on_search_covers).pack(side="left")
 
-        # Scrollable thumbnail grid
-        thumb_container = ttk.Frame(self.auto_frame)
-        thumb_container.pack(fill="both", expand=True, pady=(8, 0))
+        # ── Horizontal container: thumbnails (left) + preview (right) ──
+        content_area = ttk.Frame(self.auto_frame)
+        content_area.pack(fill="both", expand=True, pady=(8, 0))
 
-        self.thumb_canvas = tk.Canvas(thumb_container, height=230)
+        # Scrollable thumbnail grid (left side)
+        thumb_container = ttk.Frame(content_area)
+        thumb_container.pack(side="left", fill="both", expand=True)
+
+        self.thumb_canvas = tk.Canvas(thumb_container, height=430)
         thumb_scroll = ttk.Scrollbar(thumb_container, orient="horizontal",
                                      command=self.thumb_canvas.xview)
         self.thumb_canvas.configure(xscrollcommand=thumb_scroll.set)
@@ -160,6 +164,27 @@ class CoverInjektorApp:
                               lambda e: self.thumb_canvas.configure(
                                   scrollregion=self.thumb_canvas.bbox("all")))
 
+        # Loading overlay (hidden by default)
+        self.loading_frame = ttk.Frame(self.thumb_canvas)
+        self.loading_spinner = ttk.Progressbar(self.loading_frame, length=200,
+                                               mode="indeterminate")
+        self.loading_spinner.pack(pady=(8, 4))
+        self.loading_label = ttk.Label(self.loading_frame,
+                                       text="Searching for covers…",
+                                       font=("Helvetica", 10))
+        self.loading_label.pack()
+        self._loading_window_id: int | None = None
+
+        # Cover preview (right side, same height as grid)
+        self.preview_frame = ttk.LabelFrame(content_area, text="  Preview  ",
+                                            padding=6, width=300)
+        self.preview_frame.pack(side="right", fill="both", padx=(10, 0))
+        self.preview_frame.pack_propagate(False)
+        self.preview_label = ttk.Label(self.preview_frame,
+                                       text="No cover\nselected",
+                                       anchor="center", justify="center")
+        self.preview_label.pack(expand=True)
+
         # Custom cover controls (hidden by default)
         self.custom_frame = ttk.Frame(cover_frame)
         cust_bar = ttk.Frame(self.custom_frame)
@@ -171,13 +196,6 @@ class CoverInjektorApp:
 
         self.custom_preview_label = ttk.Label(self.custom_frame)
         self.custom_preview_label.pack(pady=(8, 0))
-
-        # Cover preview (shared)
-        preview_frame = ttk.LabelFrame(cover_frame, text="  Preview  ", padding=6)
-        preview_frame.pack(side="right", padx=(10, 0), pady=(0, 0), fill="y")
-        self.preview_label = ttk.Label(preview_frame, text="No cover\nselected",
-                                       anchor="center", justify="center")
-        self.preview_label.pack()
 
         # ── Bottom-left: Export ───────────────────────────────────────
         export_frame = ttk.LabelFrame(self.root, text="  3 — Export  ",
@@ -245,12 +263,10 @@ class CoverInjektorApp:
     def _on_source_changed(self) -> None:
         if self.cover_source.get() == "auto":
             self.custom_frame.pack_forget()
-            self.auto_frame.pack(fill="both", expand=True,
-                                 before=self.preview_label.master)
+            self.auto_frame.pack(fill="both", expand=True)
         else:
             self.auto_frame.pack_forget()
-            self.custom_frame.pack(fill="both", expand=True,
-                                   before=self.preview_label.master)
+            self.custom_frame.pack(fill="both", expand=True)
 
     # ------------------------------------------------------------------
     # Cover searching (auto)
@@ -266,6 +282,7 @@ class CoverInjektorApp:
         self._set_status(f"Searching covers for '{query}'…")
         self.selected_cover_image = None
         self.selected_cover_index = None
+        self._show_loading(True)
 
         def _worker():
             try:
@@ -274,19 +291,22 @@ class CoverInjektorApp:
                     max_results=self.config.get("cover_search_results", 8),
                     api_keys_path=self.config.get("api_keys_file", "api_keys.json"),
                 )
-                thumb_size = tuple(self.config.get("thumbnail_size", [150, 200]))
+                thumb_size = tuple(self.config.get("thumbnail_size", [300, 200]))
                 download_thumbnails(
                     results, size=thumb_size,
                     max_workers=self.config.get("max_concurrent_downloads", 4),
                 )
                 self.root.after(0, lambda: self._display_thumbnails(results))
             except Exception as exc:
+                self.root.after(0, lambda: self._show_loading(False))
                 self.root.after(0, lambda: self._set_status(f"Search failed: {exc}"))
 
         threading.Thread(target=_worker, daemon=True).start()
 
     def _display_thumbnails(self, results: list[CoverResult]) -> None:
-        """Populate the thumbnail grid with search results."""
+        """Populate the thumbnail grid with search results in a 2-row layout."""
+        self._show_loading(False)
+
         # Clear previous
         for child in self.thumb_inner.winfo_children():
             child.destroy()
@@ -294,13 +314,19 @@ class CoverInjektorApp:
         self.cover_results = results
 
         if not results:
-            ttk.Label(self.thumb_inner, text="No covers found.").pack()
+            ttk.Label(self.thumb_inner, text="No covers found.").grid(
+                row=0, column=0, padx=20, pady=20)
             self._set_status("No covers found.")
             return
 
+        # Arrange in 2 rows: row 0 gets first half, row 1 gets second half
+        cols = (len(results) + 1) // 2  # ceiling division
         for idx, cr in enumerate(results):
+            row = idx // cols
+            col = idx % cols
+
             frame = ttk.Frame(self.thumb_inner, padding=4)
-            frame.pack(side="left", padx=4, pady=4)
+            frame.grid(row=row, column=col, padx=4, pady=4, sticky="n")
 
             if cr.thumbnail_image:
                 tk_img = ImageTk.PhotoImage(cr.thumbnail_image)
@@ -378,11 +404,50 @@ class CoverInjektorApp:
 
     def _show_preview(self, img: Image.Image) -> None:
         """Display a preview of the selected cover image."""
-        preview = img.copy()
-        preview.thumbnail((160, 220), Image.LANCZOS)
+
+        # Sicherstellen, dass die Größe aktuell berechnet ist
+        self.preview_frame.update_idletasks()
+
+        width = self.preview_frame.winfo_width()
+        height = self.preview_frame.winfo_height()
+
+        # Optional: Padding des LabelFrames berücksichtigen
+        preview = img.resize((width, height), Image.LANCZOS)
+
         tk_img = ImageTk.PhotoImage(preview)
         self.preview_label.configure(image=tk_img, text="")
         self.preview_label._preview_ref = tk_img  # prevent GC
+
+    # ------------------------------------------------------------------
+    # Loading animation
+    # ------------------------------------------------------------------
+
+    def _show_loading(self, show: bool) -> None:
+        """Show or hide the loading spinner overlay on the thumbnail canvas."""
+        if show:
+            # Clear existing thumbnails
+            for child in self.thumb_inner.winfo_children():
+                child.destroy()
+            self.thumbnail_refs.clear()
+            # Place loading overlay centred on canvas
+            self.loading_spinner.start(15)
+            canvas_w = self.thumb_canvas.winfo_width()
+            canvas_h = self.thumb_canvas.winfo_height()
+            if canvas_w < 10:
+                canvas_w = 500
+            if canvas_h < 10:
+                canvas_h = 400
+            if self._loading_window_id is not None:
+                self.thumb_canvas.delete(self._loading_window_id)
+            self._loading_window_id = self.thumb_canvas.create_window(
+                canvas_w // 2, canvas_h // 2,
+                window=self.loading_frame, anchor="center",
+            )
+        else:
+            self.loading_spinner.stop()
+            if self._loading_window_id is not None:
+                self.thumb_canvas.delete(self._loading_window_id)
+                self._loading_window_id = None
 
     # ------------------------------------------------------------------
     # Export destination
