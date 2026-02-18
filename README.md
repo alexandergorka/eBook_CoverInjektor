@@ -9,7 +9,12 @@ A streamlined desktop tool that adds cover art to PDF ebooks and exports them to
 
 - **Batch PDF processing** — select one or many PDFs at once  
 - **Automatic cover art search** — fetches suggestions from Google Books and Open Library APIs  
-- **AI cover generation** — generate custom cover art using OpenAI DALL-E with an editable prompt  
+- **AI-powered cover generation** — create unique, professional cover art using OpenAI DALL-E:
+  - Supports both DALL-E 2 and DALL-E 3 models
+  - Generates high-resolution covers (up to 1792x1024 px)
+  - Customizable prompts with intelligent defaults based on book title
+  - Choose between standard and HD quality (DALL-E 3)
+  - Optimized for eBook portrait format with professional typography
 - **Custom cover upload** — use your own image file instead  
 - **Smart device detection** — auto-detects Kindle, Kobo, PocketBook, and other mounted ebook readers (macOS, Linux, Windows)  
 - **Safe export** — checks free space, write permissions, and provides full-path confirmation  
@@ -99,6 +104,58 @@ api_keys.json
 
 ---
 
+## AI Cover Generation
+
+The AI cover generator uses OpenAI's DALL-E API to create custom, professional book covers from text descriptions.
+
+### How it works
+
+1. Enter a book title or detailed description
+2. The app generates an optimized prompt that instructs DALL-E to create:
+   - A single, flat, front-facing cover design (not a book mockup)
+   - Portrait orientation optimized for PDF eBooks
+   - Professional typography with prominent title placement
+   - High-resolution output (300 DPI equivalent)
+   - Clean composition without watermarks or branding
+3. You can edit the prompt to specify:
+   - Visual style (minimalist, vintage, modern, etc.)
+   - Color palette preferences
+   - Genre-specific elements
+   - Author name placement
+4. Generated covers are automatically downloaded and ready to use
+
+### Model comparison
+
+| Feature | DALL-E 2 | DALL-E 3 |
+|---------|----------|----------|
+| **Speed** | Faster | Slightly slower |
+| **Cost** | ~$0.02/image | ~$0.04–$0.08/image |
+| **Quality** | Good | Excellent |
+| **Prompt adherence** | Moderate | Very high |
+| **Available sizes** | 256x256, 512x512, 1024x1024 | 1024x1024, 1024x1792, 1792x1024 |
+| **HD quality** | No | Yes (additional cost) |
+
+**Recommendation:** Use DALL-E 3 with standard quality for best results. DALL-E 2 is suitable for quick prototypes or budget-conscious projects.
+
+### Tips for better results
+
+- **Be specific**: Instead of "a mystery novel cover", try "a dark mystery novel cover with a foggy Victorian street at night"
+- **Mention colors**: "using deep blues and gold accents" or "warm autumn color palette"
+- **Specify style**: "minimalist design", "watercolor illustration", "photorealistic", "vintage book cover style"
+- **Genre matters**: Include the genre to guide DALL-E toward appropriate visual conventions
+- **Iterate**: If the first result isn't perfect, refine your prompt and regenerate
+
+### Costs
+
+DALL-E charges per image generation:
+- **DALL-E 2**: ~$0.02 per 1024x1024 image
+- **DALL-E 3 (standard)**: ~$0.04 per 1024x1024 or 1024x1792 image
+- **DALL-E 3 (HD)**: ~$0.08 per image
+
+See [OpenAI pricing](https://openai.com/pricing) for current rates.
+
+---
+
 ## Usage
 
 ### Launch the application
@@ -111,13 +168,25 @@ python main.py
 
 1. **Select PDFs** — click *Browse PDFs…* to choose one or more PDF files  
 2. **Choose a cover** —  
-   - The search box auto-fills from the first PDF's filename  
-   - Click *Search Covers* to fetch suggestions from Google Books & Open Library  
-   - Click any thumbnail to select it; a preview appears on the right  
-   - Or switch to *Custom image file* and pick a local image  
-   - Or switch to *Generate AI Cover Art* to create a unique cover with DALL-E  
-     - The prompt auto-fills from the filename; edit it freely to get the look you want  
-     - Choose model (DALL-E 2/3), quality, and size, then click *Generate Cover*  
+   - **Option A: Search for existing covers**
+     - The search box auto-fills from the first PDF's filename  
+     - Click *Search Covers* to fetch suggestions from Google Books & Open Library  
+     - Click any thumbnail to select it; a preview appears on the right  
+   - **Option B: Upload your own image**
+     - Switch to *Custom image file* and pick a local image  
+   - **Option C: Generate AI cover art** (requires OpenAI API key)
+     - Switch to *Generate AI Cover Art*
+     - A descriptive prompt auto-fills based on the book title — edit it to customize the design
+     - Adjust generation parameters:
+       - **Model**: Choose DALL-E 2 (faster, cheaper) or DALL-E 3 (higher quality, better prompt adherence)
+       - **Quality**: Standard or HD (DALL-E 3 only; HD costs more but provides enhanced detail)
+       - **Size**: Select from available dimensions (1024x1024, 1024x1792, 1792x1024 for DALL-E 3)
+     - Click *Generate Cover* to create your custom design (usually takes 10-30 seconds)
+     - The generated cover is automatically optimized for eBook formatting:
+       - Portrait orientation suitable for PDF first pages
+       - Professional typography with centered title placement
+       - High contrast and readability
+       - Clean, full-bleed design without mockup elements
 3. **Set destination** —  
    - Connected ebook readers are auto-detected and listed  
    - Click *Browse…* to choose any local directory  
