@@ -3,3 +3,8 @@ api_keys.json
 __pycache__/
 *.pyc
 *.log
+build
+dist
+main.spec
+.DS_Store
+main-macos.spec
