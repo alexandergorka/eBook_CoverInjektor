@@ -9,6 +9,7 @@ A streamlined desktop tool that adds cover art to PDF ebooks and exports them to
 
 - **Batch PDF processing** — select one or many PDFs at once  
 - **Automatic cover art search** — fetches suggestions from Google Books and Open Library APIs  
+- **AI cover generation** — generate custom cover art using OpenAI DALL-E with an editable prompt  
 - **Custom cover upload** — use your own image file instead  
 - **Smart device detection** — auto-detects Kindle, Kobo, PocketBook, and other mounted ebook readers (macOS, Linux, Windows)  
 - **Safe export** — checks free space, write permissions, and provides full-path confirmation  
@@ -72,11 +73,21 @@ Edit `api_keys.json` in the project root:
 
 ```json
 {
-    "google_books_api_key": "YOUR_GOOGLE_BOOKS_API_KEY_HERE"
+    "google_books_api_key": "YOUR_GOOGLE_BOOKS_API_KEY_HERE",
+    "openai_api_key": "YOUR_OPENAI_API_KEY_HERE"
 }
 ```
 
 > The application works without a Google API key (Open Library needs no key), but results may be limited and rate-throttled.
+
+### OpenAI API (required for AI cover generation)
+
+1. Go to [platform.openai.com](https://platform.openai.com/)
+2. Sign up or log in
+3. Navigate to **API Keys** and click **Create new secret key**
+4. Copy the key and paste it into `api_keys.json` as `openai_api_key`
+
+> DALL-E 3 image generation costs approximately $0.04–$0.08 per image depending on size and quality. See [OpenAI pricing](https://openai.com/pricing) for details.
 
 ### Security note
 
@@ -104,6 +115,9 @@ python main.py
    - Click *Search Covers* to fetch suggestions from Google Books & Open Library  
    - Click any thumbnail to select it; a preview appears on the right  
    - Or switch to *Custom image file* and pick a local image  
+   - Or switch to *Generate AI Cover Art* to create a unique cover with DALL-E  
+     - The prompt auto-fills from the filename; edit it freely to get the look you want  
+     - Choose model (DALL-E 2/3), quality, and size, then click *Generate Cover*  
 3. **Set destination** —  
    - Connected ebook readers are auto-detected and listed  
    - Click *Browse…* to choose any local directory  
@@ -128,7 +142,10 @@ Edit `config.json` to change defaults:
     "log_level": "INFO",
     "log_file": "ebook_coverinjektor.log",
     "thumbnail_size": [150, 200],
-    "max_concurrent_downloads": 4
+    "max_concurrent_downloads": 4,
+    "ai_model": "dall-e-3",
+    "ai_image_size": "1024x1792",
+    "ai_quality": "standard"
 }
 ```
 
@@ -143,6 +160,9 @@ Edit `config.json` to change defaults:
 | `log_file` | Log file path (empty string to disable file logging) |
 | `thumbnail_size` | `[width, height]` in pixels for thumbnail display |
 | `max_concurrent_downloads` | Parallel thumbnail download threads |
+| `ai_model` | Default DALL-E model: `dall-e-3` or `dall-e-2` |
+| `ai_image_size` | Default image size for AI generation |
+| `ai_quality` | Default quality: `standard` or `hd` (DALL-E 3 only) |
 
 ---
 
@@ -153,6 +173,7 @@ eBook_CoverInjektor/
 ├── main.py              # Entry point — launch the app
 ├── gui.py               # Tkinter GUI
 ├── cover_fetcher.py     # Google Books + Open Library API integration
+├── ai_cover_generator.py # OpenAI DALL-E cover generation
 ├── pdf_processor.py     # Cover injection & PDF export
 ├── device_detector.py   # Cross-platform ebook reader detection
 ├── config.json          # Application settings
@@ -189,6 +210,7 @@ Detection works on:
 |---------|----------|
 | No covers found | Check your internet connection; try a simpler search term |
 | Google API errors | Verify the key in `api_keys.json`; check your API quota |
+| AI generation fails | Ensure `openai_api_key` is set in `api_keys.json`; check your OpenAI account balance |
 | tkinter not found | Install `python3-tk` via your system package manager |
 | Device not detected | Ensure the reader is mounted and its volume name matches a known pattern |
 | Permission denied on export | Check write permissions on the target directory |

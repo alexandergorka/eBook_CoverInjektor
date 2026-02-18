@@ -27,6 +27,7 @@ from cover_fetcher import (
     download_thumbnails,
     fetch_covers,
 )
+from ai_cover_generator import build_default_prompt, generate_cover
 from device_detector import DetectedDevice, detect_ereaders
 from pdf_processor import inject_cover, export_pdf, render_first_page
 
@@ -125,6 +126,9 @@ class CoverInjektorApp:
                         command=self._on_source_changed).pack(side="left")
         ttk.Radiobutton(source_bar, text="Custom image file",
                         variable=self.cover_source, value="custom",
+                        command=self._on_source_changed).pack(side="left", padx=(16, 0))
+        ttk.Radiobutton(source_bar, text="Generate AI Cover Art",
+                        variable=self.cover_source, value="ai",
                         command=self._on_source_changed).pack(side="left", padx=(16, 0))
 
         # Auto-search controls
@@ -226,6 +230,66 @@ class CoverInjektorApp:
         self.custom_preview_label = ttk.Label(self.custom_frame)
         self.custom_preview_label.pack(pady=(8, 0))
 
+        # AI cover generation controls (hidden by default)
+        self.ai_frame = ttk.Frame(cover_frame)
+
+        ai_top_bar = ttk.Frame(self.ai_frame)
+        ai_top_bar.pack(fill="x", pady=(0, 6))
+
+        # Model selector
+        ttk.Label(ai_top_bar, text="Model:").pack(side="left")
+        self.ai_model_var = tk.StringVar(value="dall-e-3")
+        ai_model_combo = ttk.Combobox(ai_top_bar, textvariable=self.ai_model_var,
+                                       values=["dall-e-3", "dall-e-2"],
+                                       width=10, state="readonly")
+        ai_model_combo.pack(side="left", padx=(4, 12))
+
+        # Quality selector (dall-e-3 only)
+        ttk.Label(ai_top_bar, text="Quality:").pack(side="left")
+        self.ai_quality_var = tk.StringVar(value="standard")
+        ai_quality_combo = ttk.Combobox(ai_top_bar, textvariable=self.ai_quality_var,
+                                         values=["standard", "hd"],
+                                         width=10, state="readonly")
+        ai_quality_combo.pack(side="left", padx=(4, 12))
+
+        # Size selector
+        ttk.Label(ai_top_bar, text="Size:").pack(side="left")
+        self.ai_size_var = tk.StringVar(value="1024x1792")
+        ai_size_combo = ttk.Combobox(ai_top_bar, textvariable=self.ai_size_var,
+                                      values=["1024x1792", "1024x1024", "1792x1024"],
+                                      width=12, state="readonly")
+        ai_size_combo.pack(side="left", padx=(4, 0))
+
+        # Prompt label
+        ttk.Label(self.ai_frame, text="Prompt (edit to customise):",
+                  font=("Helvetica", 10)).pack(fill="x", anchor="w")
+
+        # Editable prompt text area
+        prompt_container = ttk.Frame(self.ai_frame)
+        prompt_container.pack(fill="both", expand=True, pady=(4, 6))
+
+        self.ai_prompt_text = tk.Text(prompt_container, height=6, wrap="word",
+                                      font=("Helvetica", 11))
+        prompt_scroll = ttk.Scrollbar(prompt_container, orient="vertical",
+                                      command=self.ai_prompt_text.yview)
+        self.ai_prompt_text.configure(yscrollcommand=prompt_scroll.set)
+        prompt_scroll.pack(side="right", fill="y")
+        self.ai_prompt_text.pack(side="left", fill="both", expand=True)
+
+        # Generate button row
+        ai_btn_bar = ttk.Frame(self.ai_frame)
+        ai_btn_bar.pack(fill="x")
+        self.ai_generate_btn = ttk.Button(ai_btn_bar, text="Generate Cover",
+                                          command=self._on_generate_ai_cover)
+        self.ai_generate_btn.pack(side="left")
+        self.ai_spinner = ttk.Progressbar(ai_btn_bar, length=180,
+                                          mode="indeterminate")
+        self.ai_spinner.pack(side="left", padx=(12, 0))
+        self.ai_status_label = ttk.Label(ai_btn_bar, text="",
+                                         font=("Helvetica", 9),
+                                         foreground="gray")
+        self.ai_status_label.pack(side="left", padx=(8, 0))
+
         # ── Bottom-left: Export ───────────────────────────────────────
         export_frame = ttk.LabelFrame(self.root, text="  3 — Export  ",
                                       padding=10)
@@ -279,6 +343,11 @@ class CoverInjektorApp:
                 from cover_fetcher import _sanitise_query
                 query = _sanitise_query(self.pdf_paths[0])
                 self.search_var.set(query)
+                # Pre-fill AI prompt if empty
+                current_prompt = self.ai_prompt_text.get("1.0", "end").strip()
+                if not current_prompt:
+                    self.ai_prompt_text.delete("1.0", "end")
+                    self.ai_prompt_text.insert("1.0", build_default_prompt(query))
             # Render first page preview of the first PDF
             self._update_pdf_preview()
 
@@ -296,12 +365,24 @@ class CoverInjektorApp:
     # ------------------------------------------------------------------
 
     def _on_source_changed(self) -> None:
-        if self.cover_source.get() == "auto":
-            self.custom_frame.pack_forget()
+        source = self.cover_source.get()
+        # Hide all source frames
+        self.auto_frame.pack_forget()
+        self.custom_frame.pack_forget()
+        self.ai_frame.pack_forget()
+        # Show the selected one
+        if source == "auto":
             self.auto_frame.pack(fill="both", expand=True)
-        else:
-            self.auto_frame.pack_forget()
+        elif source == "custom":
             self.custom_frame.pack(fill="both", expand=True)
+        elif source == "ai":
+            self.ai_frame.pack(fill="both", expand=True)
+            # Pre-fill prompt from search/filename if empty
+            current = self.ai_prompt_text.get("1.0", "end").strip()
+            if not current:
+                title = self.search_var.get().strip()
+                if title:
+                    self.ai_prompt_text.insert("1.0", build_default_prompt(title))
 
     # ------------------------------------------------------------------
     # Cover searching (auto)
@@ -432,6 +513,66 @@ class CoverInjektorApp:
             except Exception as exc:
                 messagebox.showerror("Image Error", f"Cannot open image:\n{exc}")
                 self.selected_cover_image = None
+
+    # ------------------------------------------------------------------
+    # AI cover generation
+    # ------------------------------------------------------------------
+
+    def _on_generate_ai_cover(self) -> None:
+        """Generate a cover image using the OpenAI DALL-E API."""
+        prompt = self.ai_prompt_text.get("1.0", "end").strip()
+        if not prompt:
+            messagebox.showwarning("No Prompt",
+                                   "Please enter a prompt describing the cover.")
+            return
+
+        model = self.ai_model_var.get()
+        size = self.ai_size_var.get()
+        quality = self.ai_quality_var.get()
+        api_keys_path = self.config.get("api_keys_file", "api_keys.json")
+
+        # Disable button and show spinner
+        self.ai_generate_btn.configure(state="disabled")
+        self.ai_spinner.start(15)
+        self.ai_status_label.configure(text="Generating… this may take a moment",
+                                       foreground="gray")
+        self._set_status("Generating AI cover art…")
+
+        def _worker():
+            try:
+                img = generate_cover(
+                    prompt=prompt,
+                    api_keys_path=api_keys_path,
+                    model=model,
+                    size=size,
+                    quality=quality,
+                )
+                if img:
+                    self.root.after(0, lambda: self._on_ai_cover_ready(img))
+                else:
+                    self.root.after(0, lambda: self._on_ai_cover_error(
+                        "No image returned."))
+            except Exception as exc:
+                self.root.after(0, lambda: self._on_ai_cover_error(str(exc)))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_ai_cover_ready(self, img: Image.Image) -> None:
+        """Handle a successfully generated AI cover."""
+        self.ai_spinner.stop()
+        self.ai_generate_btn.configure(state="normal")
+        self.ai_status_label.configure(text="Cover generated!", foreground="green")
+        self.selected_cover_image = img
+        self._show_preview(img)
+        self._set_status("AI cover generated and ready.")
+
+    def _on_ai_cover_error(self, error_msg: str) -> None:
+        """Handle an AI cover generation error."""
+        self.ai_spinner.stop()
+        self.ai_generate_btn.configure(state="normal")
+        self.ai_status_label.configure(text="Generation failed", foreground="red")
+        self._set_status(f"AI generation error: {error_msg}")
+        messagebox.showerror("AI Cover Error", f"Cover generation failed:\n\n{error_msg}")
 
     # ------------------------------------------------------------------
     # Preview

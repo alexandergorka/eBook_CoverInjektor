@@ -8,5 +8,8 @@
     "log_file": "ebook_coverinjektor.log",
     "supported_extensions": [".pdf"],
     "thumbnail_size": [150, 200],
-    "max_concurrent_downloads": 4
+    "max_concurrent_downloads": 4,
+    "ai_model": "dall-e-3",
+    "ai_image_size": "1024x1792",
+    "ai_quality": "standard"
 }
