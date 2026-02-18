@@ -124,68 +124,28 @@ class CoverInjektorApp:
         ttk.Radiobutton(source_bar, text="Auto-search from APIs",
                         variable=self.cover_source, value="auto",
                         command=self._on_source_changed).pack(side="left")
+        ttk.Radiobutton(source_bar, text="Generate AI Cover Art",
+                        variable=self.cover_source, value="ai",
+                        command=self._on_source_changed).pack(side="left")
         ttk.Radiobutton(source_bar, text="Custom image file",
                         variable=self.cover_source, value="custom",
                         command=self._on_source_changed).pack(side="left", padx=(16, 0))
-        ttk.Radiobutton(source_bar, text="Generate AI Cover Art",
-                        variable=self.cover_source, value="ai",
-                        command=self._on_source_changed).pack(side="left", padx=(16, 0))
 
-        # Auto-search controls
-        self.auto_frame = ttk.Frame(cover_frame)
-        self.auto_frame.pack(fill="both", expand=True)
 
-        search_bar = ttk.Frame(self.auto_frame)
-        search_bar.pack(fill="x")
-        ttk.Label(search_bar, text="Search:").pack(side="left")
-        self.search_var = tk.StringVar()
-        self.search_entry = ttk.Entry(search_bar, textvariable=self.search_var,
-                                      width=40)
-        self.search_entry.pack(side="left", padx=(6, 8))
-        self.search_entry.bind("<Return>", lambda e: self._on_search_covers())
-        ttk.Button(search_bar, text="Search Covers",
-                   command=self._on_search_covers).pack(side="left")
+        # ── Horizontal container: source frames (left) + preview (right) ──
+        content_area = ttk.Frame(cover_frame)
+        content_area.pack(fill="both", expand=True)
 
-        # ── Horizontal container: thumbnails (left) + preview (right) ──
-        content_area = ttk.Frame(self.auto_frame)
-        content_area.pack(fill="both", expand=True, pady=(8, 0))
+        # Left side: holds the switchable source frames
+        self.source_container = ttk.Frame(content_area)
+        self.source_container.pack(side="left", fill="both", expand=True)
 
-        # Scrollable thumbnail grid (left side)
-        thumb_container = ttk.Frame(content_area)
-        thumb_container.pack(side="left", fill="both", expand=True)
-
-        self.thumb_canvas = tk.Canvas(thumb_container, height=430)
-        thumb_scroll = ttk.Scrollbar(thumb_container, orient="horizontal",
-                                     command=self.thumb_canvas.xview)
-        self.thumb_canvas.configure(xscrollcommand=thumb_scroll.set)
-        thumb_scroll.pack(side="bottom", fill="x")
-        self.thumb_canvas.pack(side="top", fill="both", expand=True)
-
-        self.thumb_inner = ttk.Frame(self.thumb_canvas)
-        self.thumb_canvas.create_window((0, 0), window=self.thumb_inner,
-                                        anchor="nw")
-        self.thumb_inner.bind("<Configure>",
-                              lambda e: self.thumb_canvas.configure(
-                                  scrollregion=self.thumb_canvas.bbox("all")))
-
-        # Loading overlay (hidden by default)
-        self.loading_frame = ttk.Frame(self.thumb_canvas)
-        self.loading_spinner = ttk.Progressbar(self.loading_frame, length=200,
-                                               mode="indeterminate")
-        self.loading_spinner.pack(pady=(8, 4))
-        self.loading_label = ttk.Label(self.loading_frame,
-                                       text="Searching for covers…",
-                                       font=("Helvetica", 10))
-        self.loading_label.pack()
-        self._loading_window_id: int | None = None
-
-        # Cover preview (right side, same height as grid)
+        # Cover preview (right side, always visible)
         self.preview_frame = ttk.LabelFrame(content_area, text="  Preview  ",
                                             padding=6, width=300)
         self.preview_frame.pack(side="right", fill="y", padx=(10, 0))
         self.preview_frame.pack_propagate(False)
 
-        # Sub-container: PDF first page (top) + cover preview (bottom)
         # PDF first-page preview
         pdf_preview_section = ttk.LabelFrame(self.preview_frame,
                                              text="  Current First Page  ",
@@ -218,8 +178,52 @@ class CoverInjektorApp:
                                        anchor="center", justify="center")
         self.preview_label.pack(expand=True)
 
-        # Custom cover controls (hidden by default)
-        self.custom_frame = ttk.Frame(cover_frame)
+        # ── Auto-search controls ──────────────────────────────────────
+        self.auto_frame = ttk.Frame(self.source_container)
+        self.auto_frame.pack(fill="both", expand=True)
+
+        search_bar = ttk.Frame(self.auto_frame)
+        search_bar.pack(fill="x")
+        ttk.Label(search_bar, text="Search:").pack(side="left")
+        self.search_var = tk.StringVar()
+        self.search_entry = ttk.Entry(search_bar, textvariable=self.search_var,
+                                      width=40)
+        self.search_entry.pack(side="left", padx=(6, 8))
+        self.search_entry.bind("<Return>", lambda e: self._on_search_covers())
+        ttk.Button(search_bar, text="Search Covers",
+                   command=self._on_search_covers).pack(side="left")
+
+        # Scrollable thumbnail grid
+        thumb_container = ttk.Frame(self.auto_frame)
+        thumb_container.pack(fill="both", expand=True, pady=(8, 0))
+
+        self.thumb_canvas = tk.Canvas(thumb_container, height=430)
+        thumb_scroll = ttk.Scrollbar(thumb_container, orient="horizontal",
+                                     command=self.thumb_canvas.xview)
+        self.thumb_canvas.configure(xscrollcommand=thumb_scroll.set)
+        thumb_scroll.pack(side="bottom", fill="x")
+        self.thumb_canvas.pack(side="top", fill="both", expand=True)
+
+        self.thumb_inner = ttk.Frame(self.thumb_canvas)
+        self.thumb_canvas.create_window((0, 0), window=self.thumb_inner,
+                                        anchor="nw")
+        self.thumb_inner.bind("<Configure>",
+                              lambda e: self.thumb_canvas.configure(
+                                  scrollregion=self.thumb_canvas.bbox("all")))
+
+        # Loading overlay (hidden by default)
+        self.loading_frame = ttk.Frame(self.thumb_canvas)
+        self.loading_spinner = ttk.Progressbar(self.loading_frame, length=200,
+                                               mode="indeterminate")
+        self.loading_spinner.pack(pady=(8, 4))
+        self.loading_label = ttk.Label(self.loading_frame,
+                                       text="Searching for covers…",
+                                       font=("Helvetica", 10))
+        self.loading_label.pack()
+        self._loading_window_id: int | None = None
+
+        # ── Custom cover controls (hidden by default) ─────────────────
+        self.custom_frame = ttk.Frame(self.source_container)
         cust_bar = ttk.Frame(self.custom_frame)
         cust_bar.pack(fill="x")
         ttk.Button(cust_bar, text="Choose Image File…",
@@ -230,8 +234,8 @@ class CoverInjektorApp:
         self.custom_preview_label = ttk.Label(self.custom_frame)
         self.custom_preview_label.pack(pady=(8, 0))
 
-        # AI cover generation controls (hidden by default)
-        self.ai_frame = ttk.Frame(cover_frame)
+        # ── AI cover generation controls (hidden by default) ──────────
+        self.ai_frame = ttk.Frame(self.source_container)
 
         ai_top_bar = ttk.Frame(self.ai_frame)
         ai_top_bar.pack(fill="x", pady=(0, 6))
@@ -254,9 +258,9 @@ class CoverInjektorApp:
 
         # Size selector
         ttk.Label(ai_top_bar, text="Size:").pack(side="left")
-        self.ai_size_var = tk.StringVar(value="1024x1792")
+        self.ai_size_var = tk.StringVar(value="1024x1024")
         ai_size_combo = ttk.Combobox(ai_top_bar, textvariable=self.ai_size_var,
-                                      values=["1024x1792", "1024x1024", "1792x1024"],
+                                      values=["1024x1024", "1792x1024"],
                                       width=12, state="readonly")
         ai_size_combo.pack(side="left", padx=(4, 0))
 
@@ -370,12 +374,13 @@ class CoverInjektorApp:
         self.auto_frame.pack_forget()
         self.custom_frame.pack_forget()
         self.ai_frame.pack_forget()
-        # Show the selected one
+        # Show the selected one inside source_container
         if source == "auto":
-            self.auto_frame.pack(fill="both", expand=True)
+            self.auto_frame.pack(in_=self.source_container, fill="both", expand=True)
         elif source == "custom":
-            self.custom_frame.pack(fill="both", expand=True)
+            self.custom_frame.pack(in_=self.source_container, fill="both", expand=True)
         elif source == "ai":
+            self.ai_frame.pack(in_=self.source_container, fill="both", expand=True)
             self.ai_frame.pack(fill="both", expand=True)
             # Pre-fill prompt from search/filename if empty
             current = self.ai_prompt_text.get("1.0", "end").strip()

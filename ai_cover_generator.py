@@ -37,7 +37,7 @@ def _load_openai_key(api_keys_path: str = "api_keys.json") -> str:
         return ""
 
 
-def build_default_prompt(title: str) -> str:
+def build_default_prompt(title: str, style = "", coloPalette = "", authorName = "") -> str:
     """Build a sensible default prompt for generating a book cover.
 
     Args:
@@ -46,19 +46,37 @@ def build_default_prompt(title: str) -> str:
     Returns:
         A descriptive prompt string.
     """
+
+    if style != "":
+        style = "Style: " + style + "\n"
+
+    if coloPalette != "":
+        coloPalette = "Color Palette: " + coloPalette + "\n"
+    
+    if authorName != "":
+        authorName = "Author name: " + authorName + "\n"
+
     return (
-        f"Design a professional, visually striking book cover for a book titled "
-        f"\"{title}\". The cover should have elegant typography for the title, "
-        f"a compelling and thematic illustration or design, and a cohesive color "
-        f"palette. The style should be modern and suitable for an ebook. "
-        f"No author name needed. Portrait orientation, high quality."
-    )
+            f"Create a single, full-page eBook cover design based on the following title:"
+            f"\"{title}\""
+            f"The cover must be designed as a complete first page for a PDF eBook (portrait orientation, A4 size, 2480 x 3508 px, high resolution 300 DPI).\n"
+            f"Show only ONE book cover — do not display multiple mockups, stacked books, 3D book renders, or books placed on tables.\n"
+            f"The result must be a flat, front-facing, full-bleed cover page without any background scene or presentation mockup. No shadows, no perspective angles, no additional objects.\n"
+            f"The design should be professional, modern, and visually appealing, suitable for a digital eBook.\n"
+            f"Use balanced typography, strong composition, and high contrast for readability.\n"
+            f"Center the title prominently on the cover.\n"
+            f"Do not add any platform logos, watermarks, or branding unless specified.\n"
+            f"{style}"
+            f"{coloPalette}"
+            f"{authorName}"
+            f"Output only the final flat cover design as a single image.\n"
+        )
 
 
 def generate_cover(prompt: str,
                    api_keys_path: str = "api_keys.json",
                    model: str = "dall-e-3",
-                   size: str = "1024x1792",
+                   size: str = "1024x1024",
                    quality: str = "standard") -> Optional[Image.Image]:
     """Generate a cover image using the OpenAI DALL-E API.
 
@@ -66,7 +84,7 @@ def generate_cover(prompt: str,
         prompt: The text prompt describing the desired cover art.
         api_keys_path: Path to the JSON file containing API keys.
         model: The DALL-E model to use ('dall-e-2' or 'dall-e-3').
-        size: Image size. For dall-e-3: '1024x1024', '1024x1792', '1792x1024'.
+        size: Image size. For dall-e-3: '1024x1024', '1024x1024', '1792x1024'.
               For dall-e-2: '256x256', '512x512', '1024x1024'.
         quality: Image quality ('standard' or 'hd'). Only for dall-e-3.
 
